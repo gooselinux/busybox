@@ -1,0 +1,445 @@
+diff -urpN busybox-1.15.1/applets/applet_tables.c busybox-1.15.1-man/applets/applet_tables.c
+--- busybox-1.15.1/applets/applet_tables.c	2009-09-12 17:55:36.000000000 +0200
++++ busybox-1.15.1-man/applets/applet_tables.c	2009-10-02 13:18:39.922816035 +0200
+@@ -70,29 +70,32 @@ int main(int argc, char **argv)
+ 
+ 	/* Keep in sync with include/busybox.h! */
+ 
+-	puts("/* This is a generated file, don't edit */\n");
++	printf("/* This is a generated file, don't edit */\n\n");
+ 
+ 	printf("#define NUM_APPLETS %u\n", NUM_APPLETS);
+ 	if (NUM_APPLETS == 1) {
+ 		printf("#define SINGLE_APPLET_STR \"%s\"\n", applets[0].name);
+ 		printf("#define SINGLE_APPLET_MAIN %s_main\n", applets[0].name);
+ 	}
++	printf("\n");
+ 
+-	puts("\nconst char applet_names[] ALIGN1 = \"\"");
++	printf("const char applet_names[] ALIGN1 = \"\"\n");
+ 	for (i = 0; i < NUM_APPLETS; i++) {
+ 		printf("\"%s\" \"\\0\"\n", applets[i].name);
+ 		if (MAX_APPLET_NAME_LEN < strlen(applets[i].name))
+ 			MAX_APPLET_NAME_LEN = strlen(applets[i].name);
+ 	}
+-	puts(";");
++	printf(";\n\n");
+ 
+-	puts("\nint (*const applet_main[])(int argc, char **argv) = {");
++	printf("#ifndef SKIP_applet_main\n");
++	printf("int (*const applet_main[])(int argc, char **argv) = {\n");
+ 	for (i = 0; i < NUM_APPLETS; i++) {
+ 		printf("%s_main,\n", applets[i].main);
+ 	}
+-	puts("};");
++	printf("};\n");
++	printf("#endif\n\n");
+ 
+-	puts("const uint16_t applet_nameofs[] ALIGN2 = {");
++	printf("const uint16_t applet_nameofs[] ALIGN2 = {\n");
+ 	for (i = 0; i < NUM_APPLETS; i++) {
+ 		printf("0x%04x,\n",
+ 			offset[i]
+@@ -105,10 +108,10 @@ int main(int argc, char **argv)
+ #endif
+ 		);
+ 	}
+-	puts("};");
++	printf("};\n\n");
+ 
+ #if ENABLE_FEATURE_INSTALLER
+-	puts("const uint8_t applet_install_loc[] ALIGN1 = {");
++	printf("const uint8_t applet_install_loc[] ALIGN1 = {\n");
+ 	i = 0;
+ 	while (i < NUM_APPLETS) {
+ 		int v = applets[i].install_loc; /* 3 bits */
+@@ -117,7 +120,7 @@ int main(int argc, char **argv)
+ 		printf("0x%02x,\n", v);
+ 		i++;
+ 	}
+-	puts("};\n");
++	printf("};\n\n");
+ #endif
+ 
+ 	printf("#define MAX_APPLET_NAME_LEN %u\n", MAX_APPLET_NAME_LEN);
+diff -urpN busybox-1.15.1/applets/Kbuild busybox-1.15.1-man/applets/Kbuild
+--- busybox-1.15.1/applets/Kbuild	2009-09-12 17:55:36.000000000 +0200
++++ busybox-1.15.1-man/applets/Kbuild	2009-10-02 13:18:39.922816035 +0200
+@@ -8,7 +8,7 @@ obj-y :=
+ obj-y += applets.o
+ 
+ hostprogs-y:=
+-hostprogs-y += usage applet_tables
++hostprogs-y += usage usage_pod applet_tables
+ 
+ always:= $(hostprogs-y)
+ 
+@@ -22,13 +22,14 @@ else
+ srctree_slash = $(srctree)/
+ endif
+ 
+-
+-HOSTCFLAGS_usage.o = -I$(srctree_slash)include
++HOSTCFLAGS_usage.o = -I$(srctree_slash)include -Iinclude
++HOSTCFLAGS_usage_pod.o = -I$(srctree_slash)include -Iinclude
+ 
+ applets/applets.o: include/usage_compressed.h include/applet_tables.h
+ 
+-applets/usage:         .config $(srctree_slash)applets/usage_compressed
+ applets/applet_tables: .config
++applets/usage:         .config
++applets/usage_pod:     .config include/applet_tables.h
+ 
+ quiet_cmd_gen_usage_compressed = GEN     include/usage_compressed.h
+       cmd_gen_usage_compressed = $(srctree_slash)applets/usage_compressed include/usage_compressed.h applets
+diff -urpN busybox-1.15.1/applets/usage.c busybox-1.15.1-man/applets/usage.c
+--- busybox-1.15.1/applets/usage.c	2009-09-12 17:55:36.000000000 +0200
++++ busybox-1.15.1-man/applets/usage.c	2009-10-02 13:18:39.938521264 +0200
+@@ -8,17 +8,17 @@
+ 
+ /* Just #include "autoconf.h" doesn't work for builds in separate
+  * object directory */
+-#include "../include/autoconf.h"
++#include "autoconf.h"
+ 
+ /* Since we can't use platform.h, have to do this again by hand: */
+ #if ENABLE_NOMMU
+-#define BB_MMU 0
+-#define USE_FOR_NOMMU(...) __VA_ARGS__
+-#define USE_FOR_MMU(...)
++# define BB_MMU 0
++# define USE_FOR_NOMMU(...) __VA_ARGS__
++# define USE_FOR_MMU(...)
+ #else
+-#define BB_MMU 1
+-#define USE_FOR_NOMMU(...)
+-#define USE_FOR_MMU(...) __VA_ARGS__
++# define BB_MMU 1
++# define USE_FOR_NOMMU(...)
++# define USE_FOR_MMU(...) __VA_ARGS__
+ #endif
+ 
+ static const char usage_messages[] = ""
+diff -urpN busybox-1.15.1/applets/usage_pod.c busybox-1.15.1-man/applets/usage_pod.c
+--- busybox-1.15.1/applets/usage_pod.c	1970-01-01 01:00:00.000000000 +0100
++++ busybox-1.15.1-man/applets/usage_pod.c	2009-10-02 13:18:39.938783174 +0200
+@@ -0,0 +1,100 @@
++/* vi: set sw=4 ts=4: */
++/*
++ * Copyright (C) 2009 Denys Vlasenko.
++ *
++ * Licensed under GPLv2, see file LICENSE in this tarball for details.
++ */
++#include <unistd.h>
++#include <stdint.h>
++#include <string.h>
++#include <stdio.h>
++
++/* Just #include "autoconf.h" doesn't work for builds in separate
++ * object directory */
++#include "autoconf.h"
++
++#define SKIP_applet_main
++#define ALIGN1 /* nothing, just to placate applet_tables.h */
++#define ALIGN2 /* nothing, just to placate applet_tables.h */
++#include "applet_tables.h"
++
++/* Since we can't use platform.h, have to do this again by hand: */
++#if ENABLE_NOMMU
++# define BB_MMU 0
++# define USE_FOR_NOMMU(...) __VA_ARGS__
++# define USE_FOR_MMU(...)
++#else
++# define BB_MMU 1
++# define USE_FOR_NOMMU(...)
++# define USE_FOR_MMU(...) __VA_ARGS__
++#endif
++
++static const char usage_messages[] = ""
++#define MAKE_USAGE
++#include "usage.h"
++#include "applets.h"
++;
++
++int main(void)
++{
++	const char *names;
++	const char *usage;
++	int col, len2;
++
++	col = 0;
++	names = applet_names;
++	while (*names) {
++		len2 = strlen(names) + 2;
++		if (col >= 76 - len2) {
++			printf(",\n");
++			col = 0;
++		}
++		if (col == 0) {
++			col = 6;
++			printf("\t");
++		} else {
++			printf(", ");
++		}
++		printf(names);
++		col += len2;
++		names += len2 - 1;
++	}
++	printf("\n\n");
++
++	printf("=head1 COMMAND DESCRIPTIONS\n\n");
++	printf("=over 4\n\n");
++
++	names = applet_names;
++	usage = usage_messages;
++	while (*names) {
++		if (*names >= 'a' && *names <= 'z'
++		 && *usage != NOUSAGE_STR[0]
++		) {
++			printf("=item B<%s>\n\n", names);
++			if (*usage)
++				printf("%s %s\n\n", names, usage);
++			else
++				printf("%s\n\n", names);
++		}
++		names += strlen(names) + 1;
++		usage += strlen(usage) + 1;
++	}
++	return 0;
++}
++
++/* TODO: we used to make options bold with B<> and output an example too:
++
++=item B<cat>
++
++cat [B<-u>] [FILE]...
++
++Concatenate FILE(s) and print them to stdout
++
++Options:
++        -u      Use unbuffered i/o (ignored)
++
++Example:
++        $ cat /proc/uptime
++        110716.72 17.67
++
++*/
+diff -urpN busybox-1.15.1/docs/busybox_footer.pod busybox-1.15.1-man/docs/busybox_footer.pod
+--- busybox-1.15.1/docs/busybox_footer.pod	2009-09-12 17:55:58.000000000 +0200
++++ busybox-1.15.1-man/docs/busybox_footer.pod	2009-10-02 13:19:05.299823185 +0200
+@@ -39,7 +39,7 @@ incorect, please send in an update.
+ =for html <br>
+ 
+ Emanuele Aina <emanuele.aina@tiscali.it>
+-	run-parts
++    run-parts
+ 
+ =for html <br>
+ 
+@@ -97,7 +97,7 @@ Dave Cinege <dcinege@psychosis.com>
+ 
+ Jordan Crouse <jordan@cosmicpenguin.net>
+ 
+-	ipcalc
++    ipcalc
+ 
+ =for html <br>
+ 
+@@ -146,7 +146,7 @@ Matt Kraai <kraai@alumni.cmu.edu>
+ 
+ Stephan Linz <linz@li-pro.net>
+ 
+-	ipcalc, Red Hat equivalence
++    ipcalc, Red Hat equivalence
+ 
+ =for html <br>
+ 
+@@ -250,7 +250,7 @@ Enrique Zanardi <ezanardi@ull.es>
+ 
+ Tito Ragusa <farmatito@tiscali.it>
+ 
+-	devfsd and size optimizations in strings, openvt and deallocvt.
++    devfsd and size optimizations in strings, openvt and deallocvt.
+ 
+ =cut
+ 
+diff -urpN busybox-1.15.1/include/usage.h busybox-1.15.1-man/include/usage.h
+--- busybox-1.15.1/include/usage.h	2009-09-12 17:55:58.000000000 +0200
++++ busybox-1.15.1-man/include/usage.h	2009-10-02 13:19:05.316036588 +0200
+@@ -48,7 +48,7 @@
+      "\n	-h DIR		Home directory" \
+      "\n	-g GECOS	GECOS field" \
+      "\n	-s SHELL	Login shell" \
+-     "\n	-G GROUP	Add user to existing group" \
++     "\n	-G GRP		Add user to existing group" \
+      "\n	-S		Create a system user" \
+      "\n	-D		Do not assign a password" \
+      "\n	-H		Do not create home directory" \
+@@ -690,7 +690,7 @@
+      "\n	-D FMT		Use FMT for -d TIME conversion" \
+ 	) \
+      "\n" \
+-     "\nRecognized formats for TIME:" \
++     "\nRecognized TIME formats:" \
+      "\n	hh:mm[:ss]" \
+      "\n	[YYYY.]MM.DD-hh:mm[:ss]" \
+      "\n	YYYY-MM-DD hh:mm[:ss]" \
+@@ -1190,12 +1190,12 @@
+ #define blkid_trivial_usage \
+        ""
+ #define blkid_full_usage "\n\n" \
+-       "Print UUIDs of all filesystems."
++       "Print UUIDs of all filesystems"
+ 
+ #define findfs_trivial_usage \
+        "LABEL=label or UUID=uuid"
+ #define findfs_full_usage "\n\n" \
+-       "Find a filesystem device based on a label or UUID."
++       "Find a filesystem device based on a label or UUID"
+ #define findfs_example_usage \
+        "$ findfs LABEL=MyDevice"
+ 
+@@ -3134,22 +3134,22 @@
+ #define nmeter_full_usage "\n\n" \
+        "Monitor system in real time\n\n" \
+        "Format specifiers:\n" \
+-       "%Nc or %[cN]	Monitor CPU. N - bar size, default 10\n" \
++       " %Nc or %[cN]	Monitor CPU. N - bar size, default 10\n" \
+        "		(displays: S:system U:user N:niced D:iowait I:irq i:softirq)\n" \
+-       "%[niface]	Monitor network interface 'iface'\n" \
+-       "%m		Monitor allocated memory\n" \
+-       "%[mf]		Monitor free memory\n" \
+-       "%[mt]		Monitor total memory\n" \
+-       "%s		Monitor allocated swap\n" \
+-       "%f		Monitor number of used file descriptors\n" \
+-       "%Ni		Monitor total/specific IRQ rate\n" \
+-       "%x		Monitor context switch rate\n" \
+-       "%p		Monitor forks\n" \
+-       "%[pn]		Monitor # of processes\n" \
+-       "%b		Monitor block io\n" \
+-       "%Nt		Show time (with N decimal points)\n" \
+-       "%Nd		Milliseconds between updates (default:1000)\n" \
+-       "%r		Print <cr> instead of <lf> at EOL" \
++       " %[niface]	Monitor network interface 'iface'\n" \
++       " %m		Monitor allocated memory\n" \
++       " %[mf]		Monitor free memory\n" \
++       " %[mt]		Monitor total memory\n" \
++       " %s		Monitor allocated swap\n" \
++       " %f		Monitor number of used file descriptors\n" \
++       " %Ni		Monitor total/specific IRQ rate\n" \
++       " %x		Monitor context switch rate\n" \
++       " %p		Monitor forks\n" \
++       " %[pn]		Monitor # of processes\n" \
++       " %b		Monitor block io\n" \
++       " %Nt		Show time (with N decimal points)\n" \
++       " %Nd		Milliseconds between updates (default:1000)\n" \
++       " %r		Print <cr> instead of <lf> at EOL" \
+ 
+ #define nmeter_example_usage \
+        "nmeter '%250d%t %20c int %i bio %b mem %m forks%p'"
+@@ -4475,35 +4475,35 @@
+ #define tcpsvd_full_usage "\n\n" \
+        "Create TCP socket, bind  to IP:PORT and listen\n" \
+        "for incoming connection. Run PROG for each connection.\n" \
+-     "\nIP		IP to listen on. '0' = all" \
+-     "\nPORT		Port to listen on" \
+-     "\nPROG [ARGS]	Program to run" \
+-     "\n-l NAME		Local hostname (else looks up local hostname in DNS)" \
+-     "\n-u USER[:GROUP]	Change to user/group after bind" \
+-     "\n-c N		Handle up to N connections simultaneously" \
+-     "\n-b N		Allow a backlog of approximately N TCP SYNs" \
+-     "\n-C N[:MSG]	Allow only up to N connections from the same IP" \
+-     "\n		New connections from this IP address are closed" \
+-     "\n		immediately. MSG is written to the peer before close" \
+-     "\n-h		Look up peer's hostname" \
+-     "\n-E		Do not set up environment variables" \
+-     "\n-v		Verbose" \
++     "\n	IP		IP to listen on. '0' = all" \
++     "\n	PORT		Port to listen on" \
++     "\n	PROG [ARGS]	Program to run" \
++     "\n	-l NAME		Local hostname (else looks up local hostname in DNS)" \
++     "\n	-u USER[:GRP]	Change to user/group after bind" \
++     "\n	-c N		Handle up to N connections simultaneously" \
++     "\n	-b N		Allow a backlog of approximately N TCP SYNs" \
++     "\n	-C N[:MSG]	Allow only up to N connections from the same IP" \
++     "\n			New connections from this IP address are closed" \
++     "\n			immediately. MSG is written to the peer before close" \
++     "\n	-h		Look up peer's hostname" \
++     "\n	-E		Do not set up environment variables" \
++     "\n	-v		Verbose" \
+ 
+ #define udpsvd_trivial_usage \
+        "[-hEv] [-c N] [-u USER] [-l NAME] IP PORT PROG"
+ #define udpsvd_full_usage "\n\n" \
+        "Create UDP socket, bind to IP:PORT and wait\n" \
+        "for incoming packets. Run PROG for each packet,\n" \
+-       "redirecting all further packets with same peer ip:port to it\n" \
+-     "\nIP		IP to listen on. '0' = all" \
+-     "\nPORT		Port to listen on" \
+-     "\nPROG [ARGS]	Program to run" \
+-     "\n-l NAME		Local hostname (else looks up local hostname in DNS)" \
+-     "\n-u USER[:GROUP]	Change to user/group after bind" \
+-     "\n-c N		Handle up to N connections simultaneously" \
+-     "\n-h		Look up peer's hostname" \
+-     "\n-E		Do not set up environment variables" \
+-     "\n-v		Verbose" \
++       "redirecting all further packets with same peer ip:port to it.\n" \
++     "\n	IP		IP to listen on. '0' = all" \
++     "\n	PORT		Port to listen on" \
++     "\n	PROG [ARGS]	Program to run" \
++     "\n	-l NAME		Local hostname (else looks up local hostname in DNS)" \
++     "\n	-u USER[:GRP]	Change to user/group after bind" \
++     "\n	-c N		Handle up to N connections simultaneously" \
++     "\n	-h		Look up peer's hostname" \
++     "\n	-E		Do not set up environment variables" \
++     "\n	-v		Verbose" \
+ 
+ #define tftp_trivial_usage \
+        "[OPTIONS] HOST [PORT]"
+diff -urpN busybox-1.15.1/Makefile.custom busybox-1.15.1-man/Makefile.custom
+--- busybox-1.15.1/Makefile.custom	2009-09-12 17:55:36.000000000 +0200
++++ busybox-1.15.1-man/Makefile.custom	2009-10-02 13:19:05.317035267 +0200
+@@ -111,15 +111,19 @@ doc: docs/busybox.pod docs/BusyBox.txt d
+ silent_cmd_doc =
+ disp_doc       = $($(quiet)cmd_doc)
+ 
++# sed adds newlines after "Options:" etc,
++# this is needed in order to get good BusyBox.{1,txt,html}
+ docs/busybox.pod: $(srctree)/docs/busybox_header.pod \
+ 		$(srctree)/include/usage.h \
+ 		$(srctree)/docs/busybox_footer.pod \
+-		$(srctree)/docs/autodocifier.pl
++		applets/usage_pod
+ 	$(disp_doc)
+ 	$(Q)-mkdir -p docs
+-	$(Q)-( cat $(srctree)/docs/busybox_header.pod ; \
+-	    $(srctree)/docs/autodocifier.pl $(srctree)/include/usage.h ; \
+-	    cat $(srctree)/docs/busybox_footer.pod ; ) > docs/busybox.pod
++	$(Q)-( \
++	    cat $(srctree)/docs/busybox_header.pod; \
++	    applets/usage_pod | sed 's/^[A-Za-z][A-Za-z ]*[a-z]:$$/&\n/'; \
++	    cat $(srctree)/docs/busybox_footer.pod; \
++	    ) > docs/busybox.pod
+ 
+ docs/BusyBox.txt: docs/busybox.pod
+ 	$(disp_doc)
+@@ -129,8 +133,7 @@ docs/BusyBox.txt: docs/busybox.pod
+ docs/BusyBox.1: docs/busybox.pod
+ 	$(disp_doc)
+ 	$(Q)-mkdir -p docs
+-	$(Q)-pod2man --center=BusyBox --release="version $(VERSION)" \
+-		$< > $@
++	$(Q)-pod2man --center=BusyBox --release="version $(KERNELVERSION)" $< > $@
+ 
+ docs/BusyBox.html: docs/busybox.net/BusyBox.html
+ 	$(disp_doc)
+@@ -140,8 +143,7 @@ docs/BusyBox.html: docs/busybox.net/Busy
+ 
+ docs/busybox.net/BusyBox.html: docs/busybox.pod
+ 	$(Q)-mkdir -p docs/busybox.net
+-	$(Q)-pod2html --noindex $< > \
+-	    docs/busybox.net/BusyBox.html
++	$(Q)-pod2html --noindex $< > $@
+ 	$(Q)-rm -f pod2htm*
+ 
+ # documentation, cross-reference

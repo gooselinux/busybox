@@ -1,0 +1,12 @@
+--- busybox-1.13.2/uClibc-0.9.30.1/libc/sysdeps/linux/x86_64/bits/wordsize.h	2009-06-27 00:46:21.000000000 +0200
++++ busybox-1.13.2/uClibc-0.9.30.1/libc/sysdeps/linux/x86_64/bits/wordsize.h	2009-11-26 13:48:49.867844274 +0100
+@@ -2,7 +2,8 @@
+ 
+ #if defined __x86_64__
+ # define __WORDSIZE	64
+-/*# define __WORDSIZE_COMPAT32	1*/
++/* This makes /var/run/utmp compatible with 32-bit environment: */
++# define __WORDSIZE_COMPAT32	1
+ #else
+ # define __WORDSIZE	32
+ #endif

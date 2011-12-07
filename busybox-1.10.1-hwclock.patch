@@ -1,0 +1,32 @@
+diff -up busybox-1.10.1/libbb/rtc.c.pom busybox-1.10.1/libbb/rtc.c
+--- busybox-1.10.1/libbb/rtc.c.pom	2008-04-19 05:50:33.000000000 +0200
++++ busybox-1.10.1/libbb/rtc.c	2008-05-07 12:53:19.000000000 +0200
+@@ -44,6 +44,7 @@ int rtc_xopen(const char **default_rtc, 
+ {
+ 	int rtc;
+ 
++#ifdef __ia64__
+ 	if (!*default_rtc) {
+ 		*default_rtc = "/dev/rtc";
+ 		rtc = open(*default_rtc, flags);
+@@ -55,6 +56,20 @@ int rtc_xopen(const char **default_rtc, 
+ 			return rtc;
+ 		*default_rtc = "/dev/misc/rtc";
+ 	}
++#else 
++
++	if (!*default_rtc) {
++		*default_rtc = "/dev/rtc";
++		rtc = open(*default_rtc, flags);
++		if (rtc >= 0)
++			return rtc;
++		*default_rtc = "/dev/rtc0";
++		rtc = open(*default_rtc, flags);
++		if (rtc >= 0)
++			return rtc;
++		*default_rtc = "/dev/misc/rtc";
++	}
++#endif
+ 
+ 	return xopen(*default_rtc, flags);
+ }

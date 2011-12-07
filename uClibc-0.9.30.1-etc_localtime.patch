@@ -1,0 +1,79 @@
+diff -urpN uClibc-0.9.30.1/extra/Configs/Config.in uClibc-0.9.30.1-etc_localtime/extra/Configs/Config.in
+--- busybox-1.15.1/uClibc-0.9.30.1/extra/Configs/Config.in	2009-02-18 20:51:24.000000000 +0100
++++ busybox-1.15.1/uClibc-0.9.30.1-etc_localtime/extra/Configs/Config.in	2010-04-28 19:11:41.004458022 +0200
+@@ -697,6 +697,17 @@ config UCLIBC_TZ_FILE_PATH
+ 
+ 	  Most people will use the default of '/etc/TZ'.
+ 
++config UCLIBC_FALLBACK_TO_ETC_LOCALTIME
++	bool "Use /etc/localtime as a fallback"
++	depends on UCLIBC_HAS_TZ_FILE
++	default y
++	help
++	  Answer Y to try to use /etc/localtime file.
++	  On glibc systems this file (if it is in TZif2 format)
++	  contains timezone string at the end.
++
++	  Most people will answer Y.
++
+ endmenu
+ 
+ menu "Advanced Library Settings"
+diff -urpN uClibc-0.9.30.1/libc/misc/time/time.c uClibc-0.9.30.1-etc_localtime/libc/misc/time/time.c
+--- busybox-1.15.1/uClibc-0.9.30.1/libc/misc/time/time.c	2008-09-25 18:12:29.000000000 +0200
++++ busybox-1.15.1/uClibc-0.9.30.1-etc_localtime/libc/misc/time/time.c	2010-04-28 19:12:16.823208385 +0200
+@@ -1830,7 +1830,7 @@ static smallint TZ_file_read;		/* Let BS
+ static char *read_TZ_file(char *buf)
+ {
+ 	int fd;
+-	ssize_t r;
++	int r;
+ 	size_t todo;
+ 	char *p = NULL;
+ 
+@@ -1860,6 +1860,45 @@ ERROR:
+ 		}
+ 		close(fd);
+ 	}
++#ifdef __UCLIBC_FALLBACK_TO_ETC_LOCALTIME__
++	else {
++		fd = open("/etc/localtime", O_RDONLY);
++		if (fd >= 0) {
++			r = read(fd, buf, TZ_BUFLEN);
++			if (r != TZ_BUFLEN
++			 || strncmp(buf, "TZif", 4) != 0
++			 || (unsigned char)buf[4] < 2
++			 || lseek(fd, -TZ_BUFLEN, SEEK_END) < 0
++			) {
++				goto ERROR;
++			}
++			/* tzfile.h from tzcode database says about TZif2+ files:
++			**
++			** If tzh_version is '2' or greater, the above is followed by a second instance
++			** of tzhead and a second instance of the data in which each coded transition
++			** time uses 8 rather than 4 chars,
++			** then a POSIX-TZ-environment-variable-style string for use in handling
++			** instants after the last transition time stored in the file
++			** (with nothing between the newlines if there is no POSIX representation for
++			** such instants).
++			*/
++			r = read(fd, buf, TZ_BUFLEN);
++			if (r <= 0 || buf[--r] != '\n')
++				goto ERROR;
++			buf[r] = 0;
++			while (r != 0) {
++				if (buf[--r] == '\n') {
++					p = buf + r + 1;
++#ifndef __UCLIBC_HAS_TZ_FILE_READ_MANY__
++					TZ_file_read = 1;
++#endif
++					break;
++				}
++			} /* else ('\n' not found): p remains NULL */
++			close(fd);
++		}
++	}
++#endif /* __UCLIBC_FALLBACK_TO_ETC_LOCALTIME__ */
+ 	return p;
+ }
+ 

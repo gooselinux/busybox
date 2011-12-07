@@ -1,0 +1,120 @@
+diff -urpN busybox-1.15.1/shell/hush.c busybox-1.15.1-hush/shell/hush.c
+--- busybox-1.15.1/shell/hush.c	2009-09-12 17:56:20.000000000 +0200
++++ busybox-1.15.1-hush/shell/hush.c	2010-07-15 13:26:39.802146361 +0200
+@@ -505,6 +505,7 @@ struct globals {
+ 	smallint flag_return_in_progress;
+ #endif
+ 	smallint fake_mode;
++	smallint x_mode;
+ 	smallint exiting; /* used to prevent EXIT trap recursion */
+ 	/* These four support $?, $#, and $1 */
+ 	smalluint last_exitcode;
+@@ -3288,6 +3289,31 @@ static void exec_builtin(char ***to_free
+ }
+ 
+ 
++static void dump_cmd_in_x_mode(char **argv)
++{
++	if (G.x_mode && argv) {
++		/* We want to output the line in one write op */
++		char *buf, *p;
++		int len;
++		int n;
++
++		len = 3;
++		n = 0;
++		while (argv[n])
++			len += strlen(argv[n++]) + 1;
++		buf = xmalloc(len);
++		buf[0] = '+';
++		p = buf + 1;
++		n = 0;
++		while (argv[n])
++			p += sprintf(p, " %s", argv[n++]);
++		*p++ = '\n';
++		*p = '\0';
++		fputs(buf, stderr);
++		free(buf);
++	}
++}
++
+ #if BB_MMU
+ #define pseudo_exec_argv(nommu_save, argv, assignment_cnt, argv_expanded) \
+ 	pseudo_exec_argv(argv, assignment_cnt, argv_expanded)
+@@ -3309,11 +3335,18 @@ static void pseudo_exec_argv(nommu_save_
+ {
+ 	char **new_env;
+ 
+-	/* Case when we are here: ... | var=val | ... */
+-	if (!argv[assignment_cnt])
++	new_env = expand_assignments(argv, assignment_cnt);
++	dump_cmd_in_x_mode(new_env);
++
++	if (!argv[assignment_cnt]) {
++		/* Case when we are here: ... | var=val | ...
++		 * (note that we do not exit early, i.e., do not optimize out
++		 * expand_assignments(): think about ... | var=`sleep 1` | ...
++		 */
++		free_strings(new_env);
+ 		_exit(EXIT_SUCCESS);
++	}
+ 
+-	new_env = expand_assignments(argv, assignment_cnt);
+ #if BB_MMU
+ 	set_vars_and_save_old(new_env);
+ 	free(new_env); /* optional */
+@@ -3331,6 +3364,7 @@ static void pseudo_exec_argv(nommu_save_
+ 		nommu_save->argv = argv;
+ #endif
+ 	}
++	dump_cmd_in_x_mode(argv);
+ 
+ #if ENABLE_FEATURE_SH_STANDALONE || BB_MMU
+ 	if (strchr(argv[0], '/') != NULL)
+@@ -3828,13 +3862,19 @@ static int run_pipe(struct pipe *pi)
+ 			rcode = setup_redirects(command, squirrel);
+ 			restore_redirects(squirrel);
+ 			/* Set shell variables */
++			if (G.x_mode)
++				fputc('+', stderr);
+ 			while (*argv) {
+ 				p = expand_string_to_string(*argv);
++				if (G.x_mode)
++					fprintf(stderr, " %s", p);
+ 				debug_printf_exec("set shell var:'%s'->'%s'\n",
+ 						*argv, p);
+ 				set_local_var(p, /*exp:*/ 0, /*lvl:*/ 0, /*ro:*/ 0);
+ 				argv++;
+ 			}
++			if (G.x_mode)
++				fputc('\n', stderr);
+ 			/* Do we need to flag set_local_var() errors?
+ 			 * "assignment to readonly var" and "putenv error"
+ 			 */
+@@ -3882,6 +3922,8 @@ static int run_pipe(struct pipe *pi)
+ 			rcode = setup_redirects(command, squirrel);
+ 			if (rcode == 0) {
+ 				new_env = expand_assignments(argv, command->assignment_cnt);
++				dump_cmd_in_x_mode(new_env);
++				dump_cmd_in_x_mode(argv_expanded);
+ 				old_vars = set_vars_and_save_old(new_env);
+ 				if (!funcp) {
+ 					debug_printf_exec(": builtin '%s' '%s'...\n",
+@@ -3925,6 +3967,8 @@ static int run_pipe(struct pipe *pi)
+ 			rcode = setup_redirects(command, squirrel);
+ 			if (rcode == 0) {
+ 				new_env = expand_assignments(argv, command->assignment_cnt);
++				dump_cmd_in_x_mode(new_env);
++				dump_cmd_in_x_mode(argv_expanded);
+ 				old_vars = set_vars_and_save_old(new_env);
+ 				debug_printf_exec(": run_nofork_applet '%s' '%s'...\n",
+ 					argv_expanded[0], argv_expanded[1]);
+@@ -6394,7 +6438,7 @@ static int set_mode(const char cstate, c
+ 	int state = (cstate == '-' ? 1 : 0);
+ 	switch (mode) {
+ 		case 'n': G.fake_mode = state; break;
+-		case 'x': /*G.debug_mode = state;*/ break;
++		case 'x': G.x_mode = state; break;
+ 		default:  return EXIT_FAILURE;
+ 	}
+ 	return EXIT_SUCCESS;
